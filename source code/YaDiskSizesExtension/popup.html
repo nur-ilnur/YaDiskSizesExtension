@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройки</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+<div class="container">
+    <!-- Тумблер для автоподгрузки размеров -->
+    <label class="toggle-label">
+        <input type="checkbox" id="autoLoadSizesToggle" class="toggle-checkbox"/>
+        <span class="toggle-text">Автоподгрузка размеров</span>
+    </label>
+
+    <!-- Группа кнопок -->
+    <div class="button-group">
+        <button id="getSizes" class="action-button">Обновить размеры</button>
+        <button id="sortButton" class="action-button">
+            <img src="icons/sort-icon.svg" alt="sort" class="icon"/>
+        </button>
+    </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
