@@ -117,3 +117,42 @@
   filter: brightness(0) saturate(100%) invert(0) sepia(100%) saturate(0%) brightness(155%);
   /* делаем иконку немного толще */
 }
+
+/* Нижняя панель */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 10px;
+  color: #555555;
+}
+
+/* Ссылки и иконки в футере */
+.footer-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: #555555;
+  font-weight: 450;
+  font-size: 12px;
+}
+
+.footer-link:hover {
+  color: #333333;
+}
+
+.footer-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 5px;
+}
+
+/* Версия приложения */
+.footer-version {
+  font-size: 12px;
+  color: #555555;
+  font-weight: 450;
+}
