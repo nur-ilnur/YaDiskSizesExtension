@@ -1,5 +1,5 @@
 let EXTESION_CACHE = {};
-const LOG_LEVEL = 'debug'; // Возможные значения: 'debug', 'info', 'warn', 'error', 'none'
+const LOG_LEVEL = 'error'; // Возможные значения: 'debug', 'info', 'warn', 'error', 'none'
 const DISK_API_URL = 'https://disk.yandex.ru/models-v2?m=mpfs/dir-size'; // Для личного диска
 const SHARE_API_URL = 'https://disk.yandex.ru/public/api/get-dir-size'; // Для публичных папок
 
@@ -55,7 +55,6 @@ chrome.storage.sync.get('autoLoadSizesEnabled', async (data) => {
         let lastPathname = window.location.pathname;
         // Получаем элемент div с классом 'listing__items'
         const targetNode = document.querySelector('div.listing__items');
-        const currentPath = getCurrentPath();
         const sk = getSk();
 
         if (targetNode) {
@@ -64,6 +63,7 @@ chrome.storage.sync.get('autoLoadSizesEnabled', async (data) => {
             if (initialFolders.length > 0) {
                 log('debug', 'Найдены существующие папки:', initialFolders.length);
                 for (const folder of initialFolders) {
+                    const currentPath = getCurrentPath();
                     await fetchFolderSize(currentPath, folder, sk);
                 }
             }
@@ -80,6 +80,7 @@ chrome.storage.sync.get('autoLoadSizesEnabled', async (data) => {
                     if (mutation.type === 'childList') {
                         for (const node of mutation.addedNodes) {
                             if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('listing-item') && node.classList.contains('listing-item_type_dir')) {
+                                const currentPath = getCurrentPath();
                                 await fetchFolderSize(currentPath, node, sk);
                             }
                         }
@@ -197,11 +198,12 @@ function getHash() {
         return null;
     }
     EXTESION_CACHE['shareHash'] = hash;
+    log('debug', 'HASH: ', EXTESION_CACHE['shareHash']);
     return hash;
 }
 
 function getFullPath(currentPath, path) {
-    return `${currentPath}/${path}`;
+    return currentPath ? `${currentPath}/${path}` : `/${path}`;
 }
 
 function getTrashSize() {
@@ -219,7 +221,7 @@ function getCurrentPath() {
         currentPath = currentPath.replace('/client', '');
     }
     if (currentPath.startsWith('/d/')) {
-        const match = currentPath.match(/\/d\/[^\/]+\/([^\/]+)/);
+        const match = currentPath.match(/\/d\/[^\/]+(\/[^\/]+)/);
         if (!match) {
             log('debug', 'Не удалось извлечь родительскую папку из URL: ', currentPath);
             return null;
@@ -236,13 +238,11 @@ function updateFolderSize(folderElement, size) {
 
 async function fetchFolderSize(parentPath, folderElement, sk) {
     const childPath = folderElement.querySelector('.listing-item__title').textContent.trim();
-    if (parentPath === '/trash') {
-        // Пока не умею обрабатывать файлы в корзине
+    if (parentPath === '/trash') { // Пока не умею обрабатывать файлы в корзине
         return;
     }
 
     const fullPath = getFullPath(parentPath, childPath);
-    // Проверяем кэш
     if (EXTESION_CACHE['folderSizeCache'][fullPath]) {
         log('debug', `Размер папки "${fullPath}" взят из кэша:`, EXTESION_CACHE['folderSizeCache'][fullPath]);
         updateFolderSize(folderElement, EXTESION_CACHE['folderSizeCache'][fullPath]);
@@ -271,12 +271,10 @@ async function fetchFolderSize(parentPath, folderElement, sk) {
                 requestParams: {path: fullPath},
             });
         } else if (apiUrl === SHARE_API_URL) {
-            const hash = getHash();
-            if (!hash) {
-                log('error', 'Не удалось получить hash для SHARE_API_URL');
-                return;
-            }
-            payload = new URLSearchParams(JSON.stringify({hash, sk,})).toString();
+            const hashPrefix = getHash();
+            const hash = `${hashPrefix}:${fullPath}`;
+            log('debug', 'HASH FOR REQUEST: ', hash);
+            payload = encodeURIComponent(JSON.stringify({hash, sk}));
             headers['Content-Type'] = 'text/plain';
         } else {
             log('debug', 'Неизвестный API URL:', apiUrl);
