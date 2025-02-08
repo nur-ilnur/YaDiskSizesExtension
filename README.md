@@ -5,7 +5,7 @@
 ## Установка
 
 ### Вариант 1: Быстрая установка
-1. Скачайте последний архив  [YaDiskSizesExtension v0.2.zip](https://github.com/nur-ilnur/YaDiskSizesExtension/raw/refs/heads/main/releases%20archive/YaDiskSizesExtension%20v0.3.zip)
+1. Скачайте последний архив  [YaDiskSizesExtension v0.3.zip](https://github.com/nur-ilnur/YaDiskSizesExtension/raw/refs/heads/main/releases%20archive/YaDiskSizesExtension%20v0.3.zip)
 2. Распакуйте архив в удобное место на вашем компьютере.
 3. Следуйте инструкции для вашего браузера:
 
