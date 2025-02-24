@@ -1,4 +1,4 @@
-let EXTESION_CACHE = {};
+let EXTENSION_CACHE = {};
 const LOG_LEVEL = 'error'; // Возможные значения: 'debug', 'info', 'warn', 'error', 'none'
 const DISK_API_URL = 'https://disk.yandex.ru/models-v2?m=mpfs/dir-size'; // Для личного диска
 const SHARE_API_URL = 'https://disk.yandex.ru/public/api/get-dir-size'; // Для публичных папок
@@ -7,18 +7,17 @@ const SHARE_API_URL = 'https://disk.yandex.ru/public/api/get-dir-size'; // Дл�
 resetCache();
 
 function resetCache() {
-    EXTESION_CACHE['folderSizeCache'] = {};
-    EXTESION_CACHE['diskSK'] = null;
-    EXTESION_CACHE['cachedStoreData'] = null;
-    EXTESION_CACHE['shareSK'] = null;
-    EXTESION_CACHE['shareHash'] = null;
+    EXTENSION_CACHE['folderSizeCache'] = {};
+    EXTENSION_CACHE['diskSK'] = null;
+    EXTENSION_CACHE['cachedStoreData'] = null;
+    EXTENSION_CACHE['shareSK'] = null;
+    EXTENSION_CACHE['shareHash'] = null;
 }
 
 function log(level, ...messages) {
     const levels = ['debug', 'info', 'warn', 'error'];
     const currentLevelIndex = levels.indexOf(LOG_LEVEL);
     const messageLevelIndex = levels.indexOf(level);
-
     if (messageLevelIndex >= currentLevelIndex) {
         console[level](...messages);
     }
@@ -30,12 +29,83 @@ chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
     }
 });
 
+let popupSortState = 0;
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'sortFoldersBySize') {
-        sortFoldersBySize(); // Вызов функции сортировки
+        if (popupSortState === 0) {
+            sortFoldersBySize('desc'); // Сортировка по убыванию
+        } else {
+            sortFoldersBySize('asc'); // Сортировка по возрастанию
+        }
+        popupSortState = (popupSortState + 1) % 2;
         sendResponse({status: 'success', message: 'Файлы отсортированы по размеру'});
     }
 });
+
+async function addSortButton() {
+    const addedSortButton = document.querySelector('.Super-Button-Show-Disk');
+    if (addedSortButton) {
+        log('debug','Кнопка сортировки уже добавлена');
+        return addedSortButton
+    }
+
+    let listingHead;
+    for (let i = 0; i < 5; i++) {
+        listingHead = document.querySelector('div.listing-head__listing-settings');
+        if (!listingHead) {
+            await wait(1000);
+        } else {
+            break;
+        }
+    }
+    if (!listingHead) {
+        log('error', 'Элемент div.listing-head не найден');
+        return;
+    }
+
+    const sortButton = document.createElement('button');
+    sortButton.type = 'button';
+    sortButton.className = 'Button2 Button2_size_m Select2-Button Super-Button-Show-Disk';
+    sortButton.setAttribute('aria-haspopup', 'true');
+    sortButton.setAttribute('aria-expanded', 'false');
+    sortButton.setAttribute('aria-multiselectable', 'true');
+    sortButton.setAttribute('aria-label', 'Сортировать по размеру');
+    sortButton.setAttribute('aria-pressed', 'false');
+    sortButton.setAttribute('autocomplete', 'off');
+    sortButton.setAttribute('role', 'listbox');
+
+    const buttonContent = document.createElement('span');
+    buttonContent.className = 'Button2-Text';
+    buttonContent.textContent = 'По размеру';
+
+    sortButton.style.background = 'linear-gradient(to right, #ffffe0, #ffa161)';
+    sortButton.style.marginRight = '8px'; // Отступ справа
+    sortButton.style.borderRadius = '8px';
+    sortButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.2)'; // Серая тень
+
+    sortButton.appendChild(buttonContent);
+    listingHead.insertBefore(sortButton, listingHead.firstChild);
+
+    log('debug','Кнопка сортировки добавлена');
+    return sortButton;
+}
+
+async function setupSortButton() {
+    const sortButton = await addSortButton();
+    if (!sortButton) return;
+
+    let sortState = 0;
+
+    sortButton.addEventListener('click', () => {
+        if (sortState === 0) {
+            sortFoldersBySize('desc'); // Сортировка по убыванию
+        } else {
+            sortFoldersBySize('asc'); // Сортировка по возрастанию
+        }
+        sortState = (sortState + 1) % 2;
+    });
+    log('debug','Обработчик клика на кнопку сортировки настроен');
+}
 
 function getApiUrl() {
     const currentUrl = window.location.href;
@@ -50,53 +120,108 @@ function getApiUrl() {
     }
 }
 
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function findTargetNode(retries = 3, delay = 1000) {
+    for (let i = 0; i < retries; i++) {
+        const targetNode = document.querySelector('div.listing__items');
+        if (targetNode) {
+            return targetNode;
+        }
+        log('debug',`Попытка ${i + 1}: элемент не найден, повтор через ${delay / 1000} секунд...`);
+        await wait(delay); // Ждём перед следующей попыткой
+        if (i === 0) {
+            delay = 2000; // Увеличиваем задержку после первой попытки
+        }
+    }
+    log('error', 'Элемент div.listing__items не найден после всех попыток');
+    return null;
+}
+
+
+function setupMenuClickListener() {
+    const popup = document.querySelector('div.root__content-container');
+    if (!popup) {
+        log('error','Элемент div.Popup2 не найден');
+        return;
+    }
+    popup.addEventListener('click', async (event) => {
+        // Проверяем, был ли клик на элементе с классом Menu-Item
+        const menuItem = event.target.closest('.Menu-Item');
+        if (menuItem) {
+            log('debug','Нажат элемент Menu-Item:', menuItem);
+            await wait(500);
+            await getAllFoldersSize();
+            await setupSortButton();
+        }
+    });
+    log('debug','Наблюдение за кликами на Menu-Item в div.Popup2 настроено');
+}
+
+// Функция для обработки папок
+async function processFolders() {
+    const targetNode = await findTargetNode();
+    if (!targetNode) return;
+
+    const folders = targetNode.querySelectorAll('div.listing-item_type_dir');
+    if (folders.length === 0) {
+        log('debug', 'Папки не найдены');
+        return;
+    }
+
+    const sk = getSk();
+    for (const folder of folders) {
+        const sizeElement = folder.querySelector('.listing-item__column_size');
+        if (!sizeElement || !sizeElement.textContent.trim()) {
+            const currentPath = getCurrentPath();
+            await fetchFolderSize(currentPath, folder, sk);
+        }
+    }
+}
+
 chrome.storage.sync.get('autoLoadSizesEnabled', async (data) => {
     if (data.autoLoadSizesEnabled) {
         let lastPathname = window.location.pathname;
-        // Получаем элемент div с классом 'listing__items'
-        const targetNode = document.querySelector('div.listing__items');
-        const sk = getSk();
+        // Функция для отслеживания изменений URL
+        async function watchUrlChanges() {
+            const observer = new MutationObserver(async () => {
+                const currentPathname = window.location.pathname;
+                if (lastPathname !== currentPathname) {
+                    log('debug', 'URL изменился:', currentPathname);
+                    lastPathname = currentPathname;
+                    resetCache();
+                    await setupSortButton();
+                }
+            });
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+            });
 
-        if (targetNode) {
-            // Проверяем, есть ли уже папки в DOM
-            const initialFolders = targetNode.querySelectorAll('div.listing-item_type_dir');
-            if (initialFolders.length > 0) {
-                log('debug', 'Найдены существующие папки:', initialFolders.length);
-                for (const folder of initialFolders) {
-                    const currentPath = getCurrentPath();
-                    await fetchFolderSize(currentPath, folder, sk);
+            log('debug', 'Observer запущен для отслеживания изменений URL');
+            return observer;
+        }
+        // Проверяем папки каждые 3 секунды
+        const intervalId = setInterval(processFolders, 3000);
+        // Отслеживаем изменения URL
+        const urlObserver = watchUrlChanges();
+        // Очистка при остановке расширения
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'sync' && changes.autoLoadSizesEnabled) {
+                if (!changes.autoLoadSizesEnabled.newValue) {
+                    clearInterval(intervalId); // Останавливаем интервал
+                    urlObserver.disconnect(); // Отключаем обсервер
+                    log('debug', 'Расширение остановлено');
                 }
             }
-            // Создаем MutationObserver для отслеживания изменений в DOM
-            const observer = new MutationObserver(async (mutationsList, observer) => {
-                // Проверяем, если URL изменился (например, на новую папку)
-                const currentPathname = window.location.pathname;
-                if (lastPathname && currentPathname !== lastPathname) {
-                    log('debug', "Путь изменился:", currentPathname);
-                    resetCache();
-                    lastPathname = currentPathname;
-                }
-                for (const mutation of mutationsList) {
-                    if (mutation.type === 'childList') {
-                        for (const node of mutation.addedNodes) {
-                            if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('listing-item') && node.classList.contains('listing-item_type_dir')) {
-                                const currentPath = getCurrentPath();
-                                await fetchFolderSize(currentPath, node, sk);
-                            }
-                        }
-                    }
-                }
-            });
-
-            observer.observe(targetNode, {
-                childList: true,
-                attributes: true,
-                subtree: true
-            });
-            log('debug', 'Observer запущен для div.listing__items');
-        } else {
-            log('error', 'Элемент div.listing__items не найден');
-        }
+        });
+        // Следим за кликами по сортировке
+        await setupMenuClickListener();
+        // Первая обработка папок
+        await processFolders();
+        await setupSortButton();
     }
 });
 
@@ -105,7 +230,7 @@ function formatSize(bytes) {
     const sizes = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
     if (bytes === 0) return '0 Б';
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+    return (bytes / Math.pow(1024, i)).toFixed(2).toString().replace('.', ',') + ' ' + sizes[i];
 }
 
 function getPreloadedData() {
@@ -118,12 +243,12 @@ function getPreloadedData() {
 }
 
 function getSkFromData() {
-    if (EXTESION_CACHE['diskSK']) {
-        return EXTESION_CACHE['diskSK'];
+    if (EXTENSION_CACHE['diskSK']) {
+        return EXTENSION_CACHE['diskSK'];
     }
     const data = getPreloadedData();
     if (data && data.config && data.config.sk) {
-        EXTESION_CACHE['diskSK'] = data.config.sk;
+        EXTENSION_CACHE['diskSK'] = data.config.sk;
         return data.config.sk;
     }
     log('debug', 'Не удалось получить sk из preloaded-data.');
@@ -131,8 +256,8 @@ function getSkFromData() {
 }
 
 function getStorePrefetchData() {
-    if (EXTESION_CACHE['cachedStoreData']) {
-        return EXTESION_CACHE['cachedStoreData'];
+    if (EXTENSION_CACHE['cachedStoreData']) {
+        return EXTENSION_CACHE['cachedStoreData'];
     }
     const scriptElement = document.querySelector('script#store-prefetch');
     if (!scriptElement) {
@@ -140,20 +265,20 @@ function getStorePrefetchData() {
         return null;
     }
     const cachedStoreData = JSON.parse(scriptElement.textContent);
-    EXTESION_CACHE['cachedStoreData'] = cachedStoreData;
+    EXTENSION_CACHE['cachedStoreData'] = cachedStoreData;
     return cachedStoreData;
 }
 
 function getSkFromStorePrefetch() {
-    if (EXTESION_CACHE['shareSK']) {
-        return EXTESION_CACHE['shareSK'];
+    if (EXTENSION_CACHE['shareSK']) {
+        return EXTENSION_CACHE['shareSK'];
     }
     const storeData = getStorePrefetchData();
     if (!storeData) {
         return null;
     }
     if (storeData?.environment?.sk) {
-        EXTESION_CACHE['shareSK'] = storeData.environment.sk;
+        EXTENSION_CACHE['shareSK'] = storeData.environment.sk;
         return storeData.environment.sk;
     } else {
         log('debug', 'Не удалось найти environment.sk в данных');
@@ -177,8 +302,8 @@ function getSk() {
 }
 
 function getHash() {
-    if (EXTESION_CACHE['shareHash']) {
-        return EXTESION_CACHE['shareHash'];
+    if (EXTENSION_CACHE['shareHash']) {
+        return EXTENSION_CACHE['shareHash'];
     }
     const storeData = getStorePrefetchData();
     if (!storeData?.resources) {
@@ -197,8 +322,8 @@ function getHash() {
         log('error', 'Не удалось найти hash в resources');
         return null;
     }
-    EXTESION_CACHE['shareHash'] = hash;
-    log('debug', 'HASH: ', EXTESION_CACHE['shareHash']);
+    EXTENSION_CACHE['shareHash'] = hash;
+    log('debug', 'HASH: ', EXTENSION_CACHE['shareHash']);
     return hash;
 }
 
@@ -243,9 +368,9 @@ async function fetchFolderSize(parentPath, folderElement, sk) {
     }
 
     const fullPath = getFullPath(parentPath, childPath);
-    if (EXTESION_CACHE['folderSizeCache'][fullPath]) {
-        log('debug', `Размер папки "${fullPath}" взят из кэша:`, EXTESION_CACHE['folderSizeCache'][fullPath]);
-        updateFolderSize(folderElement, EXTESION_CACHE['folderSizeCache'][fullPath]);
+    if (EXTENSION_CACHE['folderSizeCache'][fullPath]) {
+        log('debug', `Размер папки "${fullPath}" взят из кэша:`, EXTENSION_CACHE['folderSizeCache'][fullPath]);
+        updateFolderSize(folderElement, EXTENSION_CACHE['folderSizeCache'][fullPath]);
         return;
     }
 
@@ -301,7 +426,7 @@ async function fetchFolderSize(parentPath, folderElement, sk) {
             return;
         }
         const formattedSize = formatSize(size);
-        EXTESION_CACHE['folderSizeCache'][fullPath] = formattedSize;
+        EXTENSION_CACHE['folderSizeCache'][fullPath] = formattedSize;
         log('debug', `Размер папки "${fullPath}" сохранён в кэш:`, formattedSize);
         // Обновляем размер в интерфейсе
         updateFolderSize(folderElement, formattedSize);
@@ -329,7 +454,7 @@ async function getAllFoldersSize() {
     }
 }
 
-function sortFoldersBySize() {
+function sortFoldersBySize(order) {
     const items = Array.from(document.querySelectorAll('div.listing-item'));
     const itemsData = items.map(folder => {
         const sizeElement = folder.querySelector('.listing-item__column.listing-item__column_size');
@@ -338,14 +463,16 @@ function sortFoldersBySize() {
         const sizeBytes = parseSize(sizeText);
         return {size: sizeBytes, element: folder};
     });
-
-    itemsData.sort((a, b) => b.size - a.size);
+    if (order === 'desc') {
+        itemsData.sort((a, b) => b.size - a.size);
+    } else {
+        itemsData.sort((a, b) => a.size - b.size);
+    }
     const container = document.querySelector('div.listing__items');
     if (!container) {
         log('error', 'Контейнер listing__items не найден');
         return;
     }
-
     itemsData.forEach(data => {
         container.appendChild(data.element);
     });
@@ -353,11 +480,14 @@ function sortFoldersBySize() {
 }
 
 function parseSize(sizeText) {
+    let previewSize = sizeText.replace('байт', 'Б');
     const sizes = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
-    const regex = /^([\d.]+)\s*(\S+)$/; // Пример: "123.45 МБ"
-    const match = sizeText.match(regex);
-    if (!match) return 0;
-
+    const regex = /^([\d,]+)\s*(\S+)$/; // Пример: "123.45 МБ"
+    const match = previewSize.match(regex);
+    if (!match) {
+        log('debug', 'Не смог распарсить размер', sizeText)
+        return 0;
+    }
     const value = parseFloat(match[1]);
     const unit = match[2];
     const index = sizes.indexOf(unit);
