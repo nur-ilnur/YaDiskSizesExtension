@@ -50,8 +50,15 @@ async function addSortButton() {
     }
 
     let listingHead;
+    const apiUrl = getApiUrl();
+    let selector;
+    if (apiUrl === DISK_API_URL) {
+        selector = 'div.listing-head__listing-settings';
+    } else {
+        selector = 'div.toolbar';
+    }
     for (let i = 0; i < 5; i++) {
-        listingHead = document.querySelector('div.listing-head__listing-settings');
+        listingHead = document.querySelector(selector);
         if (!listingHead) {
             await wait(1000);
         } else {
